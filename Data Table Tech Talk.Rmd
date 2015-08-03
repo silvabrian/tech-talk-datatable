@@ -21,13 +21,15 @@ This tech talk primarily focuses on [data.table](https://cran.r-project.org/web/
 
 ## Getting started
 
-This tech talk requires the use of both data.table and dplyr.  You should use the following to install them.  If you run into issues installing dplyr, it may be because dplyr requires a relatively new version of R.
+This tech talk requires the use of both data.table and dplyr.  You should use the following to install them:
 
 ```{r, results='hide'}
 UsePackages(c('data.table', 'dplyr'))
 ```
 
-## read.csv vs. fread
+Note: If you run into issues installing dplyr, it may be because dplyr requires a relatively new version of R.  You will have to update R first before continuing.
+
+## fread vs. read.csv
 
 If you take away nothing else from this tech talk, at least use data.table's `fread` over `read.csv`.  On a large (20GB, 200 rows x 16 cols) data set, `read.csv` will take hours, while fread takes about 8 minutes.  By default `fread` will read a csv into a data.table, but if the remainder of this talk does not convince you to make the switch, you can also read it in as a data.frame.
 

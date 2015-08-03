@@ -1,0 +1,35 @@
+data.table vs. data.frame
+
+1. 
+
+DT[, .(assetId, dateTime, signal1)] or DT[, list(assetId, dateTime, signal1)]
+
+2. 
+
+DT[dateTime > as.POSIXct('2014-07-02 00:00:00', tz='UTC'), .(assetId, signal1)]
+
+3. 
+
+DT[, sigProd := signal1 * signal2]
+
+
+data.table vs. dplyr
+
+1. 
+
+DF %>% filter(dateTime < as.POSIXct('2014-02-01 00:00:00', tz='UTC')) %>% group_by(assetId) %>% summarize(sum(signal1))
+
+DT[dateTime < as.POSIXct('2014-02-01 00:00:00', tz='UTC'), sum(signal1), by=assetId]
+
+2. 
+
+DF %>% filter(assetId == 'Asset_1' & dateTime < as.POSIXct('2014-02-01 00:00:00', tz='UTC')) %>% arrange(desc(dateTime)) %>% with(plot(dateTime, signal1, type='l'))
+
+DT[assetId == 'Asset_1' & dateTime < as.POSIXct('2014-02-01 00:00:00', tz='UTC'), plot(dateTime, signal1, type='l')]
+
+3. 
+
+setkey(DT, 'name')
+setkey(DT2, 'name')
+
+DT[DT2, joinProd := signal1 * signal4]
