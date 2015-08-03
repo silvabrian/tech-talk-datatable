@@ -1,0 +1,445 @@
+---
+title: "data.table and other useful R packages"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r set-options, echo=FALSE}
+options(width = 100)
+```
+
+```{r, echo=F}
+HeadAndTime <- function(data) {
+  system.time(print(head(data)))
+}
+```
+
+## Purpose
+
+This tech talk primarily focuses on [data.table](https://cran.r-project.org/web/packages/data.table/index.html), a package by Matt Dowle, which is an extension on data.frame used for fast aggregation of large data (e.g. 100GB in RAM).  We will compare its speed and syntax with that of data.frame, and its aggregation capabilities with that of dplyr.
+
+## Getting started
+
+This tech talk requires the use of both data.table and dplyr.  You should use the following to install them.  If you run into issues installing dplyr, it may be because dplyr requires a relatively new version of R.
+
+```{r, results='hide'}
+UsePackages(c('data.table', 'dplyr'))
+```
+
+## read.csv vs. fread
+
+If you take away nothing else from this tech talk, at least use data.table's `fread` over `read.csv`.  On a large (20GB, 200 rows x 16 cols) data set, `read.csv` will take hours, while fread takes about 8 minutes.  By default `fread` will read a csv into a data.table, but if the remainder of this talk does not convince you to make the switch, you can also read it in as a data.frame.
+
+```{r, eval=F}
+dt <- fread('dataset.csv')                  # returns data.table
+df <- fread('dataset.csv', data.table=F)    # returns data.frame
+```
+
+## data.table vs. data.frame
+
+Let's start by making a large amount of data in both data.frame and data.table formats:
+
+```{r}
+set.seed(35753)
+
+numRows <- 10000000
+
+# Create data with assets and dateTimes
+assets <- paste('Asset', 1:1000, sep='_')
+
+dateTimes <- seq.POSIXt(from=as.POSIXct('2014-01-01 00:00:00'), 
+                        to=as.POSIXct('2015-01-01 00:00:00'), 
+                        length.out=50000)
+
+# Randomly select assets dateTimes and generate signals
+DF <- data.frame(name=1:numRows, 
+                 assetId=sample(assets, numRows, replace=T), 
+                 dateTime=sample(dateTimes, numRows, replace=T), 
+                 signal1=runif(numRows), 
+                 signal2=rexp(numRows), 
+                 signal3=sample(c('ON', 'OFF'), numRows, replace=T),
+                 stringsAsFactors=F)
+
+DT <- as.data.table(DF)
+```
+
+### Viewing the data
+
+First of all, data.table inherits from data.frame, which means that it can be passed to any package that only accepts data.frame.
+
+```{r}
+class(DT)
+```
+
+Let's take a look at the data.frame and data.table we created.
+
+```{r}
+head(DF)
+head(DT)
+```
+
+The output looks pretty similar with the only exception being the colon after the row number.  One thing that is especially nice about data.table is that when you print out the data.table object, you are only shown a summary.  You wouldn't want to do the following with a data.frame:
+
+```{r}
+DT
+```
+
+### Referencing rows
+
+Let's now look at an example of conditionally selecting rows in both data.frame and data.table.
+
+##### Select observations of Asset_100 where `signal3` is 'ON.':
+
+```{r}
+HeadAndTime(
+  DF[DF$assetId == 'Asset_100' & DF$signal3 == 'ON', ]
+)
+
+HeadAndTime(
+  DT[assetId == 'Asset_100' & signal3 == 'ON', ]
+)
+```
+
+Notice that within our data.table, we don't have to say `DT$assetId == 'Asset_100' & DT$signal3 == 'ON'`.  This is because within data.table's square brackets, we can reference column names directly as variables.
+
+While in the above code data.table is faster than data.frame, it is still not the best way to subset a data.table.  Another method involves setting a key for the data.table and then subsetting.
+
+```{r}
+setkey(DT, assetId, signal3)  # set key to use binary search instead of vector scan
+
+
+HeadAndTime(
+  DT[list('Asset_100', 'ON'), ]
+)
+```
+
+While setting up the key initially can take some time, all of the later subsetting is much faster.  This is because data.table rearranges itself to allow binary search instead of vector scan.  This means that instead of checking every row for these conditions, data.table can immediately eliminate many rows.  For comparison, the computational complexity of vector scan is $\mathcal{O}(n)$, while binary search is $\mathcal{O}(\log{}n)$.  Additionally, data.table performs computations by reference instead of making a copy and performing calculations on these.  This can be much more memory efficient, but can also lead to undesired results (see [Referential Transparency](https://en.wikipedia.org/wiki/Referential_transparency_(computer_science))).
+
+### Referencing columns
+
+Referencing columns within data.table is something that can seem a little confusing at first -- especially when one is used to data.frame syntax.  Take the following as an example:
+
+```{r}
+head(
+  DF[, 'signal1']
+)
+
+head(
+  DT[, 'signal1']
+)
+```
+
+When we apply the same syntax from data.frame to data.table, we get something quite different.  To some this may seem like a bug, but it is actually made this way by design.  The second argument within data.table, which in data.frame references columns, can be an expression and not simply column names or indexes.  So when you want to return the data from `signal1`, you can do either of the following:
+
+```{r}
+head(
+  DT[, signal1]
+)
+
+head(
+  DT[['signal1']]
+)
+
+head(
+  DT[, 'signal1', with=F]
+)
+
+```
+
+In the first example we just referenced the column name directly since column names are treated as variables within data.table.  In the second example, we are essentially treating `DT` as a list.  In the last example, we had to say `with=F`.  This is because we want to pass in a string directly to reference the column name.  For more information on `with` in base R, check out `?with`.
+
+### Why use data.table over data.frame?
+
+Right now we have seen that data.table can do the same things that data.frame can do.  And we have seen that it can do them a bit faster too.  But the syntax seems weird and confusing at first.  Is data.table really worth the extra effort?
+
+Let's first look at the structure of data.table's arguments and then look at some examples of where this structure is incredibly useful.
+
+#### data.table's arguments
+
+data.table's inputs---often denoted as `DT[i, j, k]`---allow the following:
+
+* `i` allows you to evaluate conditional arguments (i.e. `signal1 > 0.5`)
+* `j` allows you to select or perform expressions on columns
+* `by` allows you to perform evaluations by group
+
+data.table's syntax is (in many ways) analogous to SQL.  For example, you can think of the inputs to data.table as the following:
+
+```{r, eval=F}
+DT[where, select|update, group by][order by][...] ... [...]
+```
+
+#### Cool stuff in data.table
+
+So we know that we can pass expressions to data.table's `j` argument.  Here are a couple examples of where this could be useful:
+
+##### Calculate the mean of `signal1`:
+
+```{r}
+DT[, mean(signal1)]
+```
+
+##### Calculate the mean and standard deviation of `signal1`:
+
+```{r}
+DT[, list(avg=mean(signal1), sd=sd(signal1))]
+```
+
+##### Create a new column called `sigDif`, which is the difference between `signal2` and `signal1`:
+
+```{r}
+head(
+  DT[, sigDif := signal2 - signal1]
+)
+```
+
+Notice we use `:=` to assign calculations to this new column.  We can also use data.table's `by` argument to perform these calculations by group:
+
+##### Calculate the mean and standard deviation of `signal1` by `assetId`:
+
+```{r}
+DT[, list(avg=mean(signal1), sd=sd(signal1)), by=assetId]
+```
+
+data.table is clearly a very powerful tool that surpasses the capabilities of data.frame, but how does it compare to other packages that can perform similar types of aggregation and assignments?
+
+### Exercises
+
+1. Select `assetId`, `dateTime`, and `signal1` using data.table:
+
+```{r}
+# Your code here
+
+
+
+```
+
+Note: You may need to use `list()` or `.()` to group variables.
+
+2. Select `assetId` and `signal1` where `dateTime` is after 2014-07-02 00:00:00 using data.table:
+
+```{r}
+# Your code here
+
+
+
+```
+
+3. Assign the product of `signal1` and `signal2` to a new column called `sigProd` using data.table:
+
+```{r}
+# Your code here
+
+
+
+```
+
+## data.table vs. dplyr
+
+[dplyr](https://cran.r-project.org/web/packages/dplyr/index.html), a package by Hadley Wickham, offers a set of tools for splitting, applying, and combining data.  While data.table requires you to work within the data.table structure, dplyr allows you to work within data.frame, data.table, SQLite, PostgreSQL, and MySQL among others.  For our examples, we are going to work within data.frame/data.table.
+
+### Basic operations
+
+##### Compute the sum of `signal1` by `assetId`:
+
+```{r}
+HeadAndTime(
+  DF %>% group_by(assetId) %>% summarise(sum(signal1))
+)
+  
+HeadAndTime(
+  DT[, sum(signal1), by=assetId]
+)
+```
+
+There are a few things to note about dplyr's implementation.  The pipe operator, `%>%`, works in the same way `|` works in Unix---it allows you to pass the result of one calculation as the first argument of the next function (see `?"%>%"`).  Using the pipe operator seems to be a common convention when working with dplyr.  Additionally, we see two new functions, `group_by` and `summarize`, which allow you to group and then perform calculations, respectively.
+
+##### Compute sum of `signal2` by `assetId` when `signal1 > 0.5`:
+
+```{r}
+HeadAndTime(
+  DF %>% filter(signal1 > 0.5) %>% group_by(assetId) %>% summarise(sum(signal2))
+)
+
+HeadAndTime(
+  DT[signal1 > 0.5, sum(signal2), by=assetId]
+)
+```
+
+Here we have added a new function called `filter`, which performs subsetting of the data.frame.
+
+##### Take difference of `signal2` and `signal1` and assign to `sigDif`:
+
+```{r}
+HeadAndTime(
+  DF <- DF %>% mutate(sigDif = signal2 - signal1)
+)
+
+HeadAndTime(
+  DT[, sigDif := signal2 - signal1]
+)
+```
+
+Here we use the function `mutate`, which can create a new column.  The naming of dplyr's functions are pretty straightforward and easy to interpret at first glance.  However, dplyr's statements can be more verbose and sometimes inconsistent to form.
+
+##### Take difference of `signal2` and `signal1` when `signal3` equals 'ON', and assign to `sigDif1`:
+
+```{r}
+HeadAndTime(
+  DF <- DF %>% mutate(sigDif1 = ifelse(signal3 == 'ON', signal2 - signal1, NA_real_))
+)
+
+HeadAndTime(
+  DT[signal3 == 'ON', sigDif1 := signal2 - signal1]
+)
+
+```
+
+You might think that we would use `filter` for the dplyr operation, but instead we have to handle checking that `signal3` is 'ON' within the `mutate` function.  In data.table, the syntax stays consistent---it always follows the `DT[i, j, by]` structure.
+
+### Operations on multiple columns
+
+Often we may want to do operations across columns in our data.frame/data.table.  data.table and dplyr go about this in different ways.
+
+##### Sum across `signal1` and `signal2` by `assetId`:
+
+```{r}
+HeadAndTime(
+  DF %>% group_by(assetId) %>% summarise_each(funs(sum), signal1, signal2)
+)
+
+HeadAndTime(
+  DT[, lapply(list(signal1, signal2), sum), by=assetId]
+)
+```
+
+##### Sum across `signal1` and `signal2` by `assetId` and assign to new columns `signal1Sum` and `signal2Sum`, respectively:
+
+```{r}
+HeadAndTime(
+  DF <- DF %>% group_by(assetId) %>% mutate_each(funs(sum), signal1Sum=signal1, signal2Sum=signal2)
+)
+
+HeadAndTime(
+  DT[, c('signal1Sum', 'signal2Sum') := lapply(list(signal1, signal2), sum), by=assetId]
+)
+```
+
+Notice that dplyr has a set of `*_each` functions, which easily allow you to apply the function across multiple columns.  data.table on the other hand uses the `lapply` function within the `j` argument.  I think that dplyr's implementation is a little cleaner, but this is something that data.table is working on.
+
+### Joins
+
+Let's start by making a data set in both data.frame and data.table formats:
+
+```{r}
+DF2 <- data.frame(name=sample(1:numRows, numRows), 
+                  signal4=rpois(numRows, 8), 
+                  signal5=rgamma(numRows, 7))
+
+DT2 <- as.data.table(DF2)
+```
+
+##### Left join of `DF2` and `DF` by `name`:
+
+```{r}
+HeadAndTime(
+  left_join(DF2, DF, by='name')
+)
+
+setkey(DT, 'name')
+setkey(DT2, 'name')
+
+HeadAndTime(
+  DT[DT2]
+)
+```
+
+Continuing with its easy to understand syntax, dplyr introduces a function called `left_join` to perform a left join.  data.table allows you to pass in the new data.table directly.  Joining is a case where data.table's implementation is significantly faster and easier to implement in most cases.
+
+##### Left join `DF2` and `DF` by `name` and select `name`, `assetId`, `dateTime`, `signal1`, and `signal4`:
+
+```{r}
+HeadAndTime(
+  left_join(select(DF2, name, signal4), select(DF, name, assetId, dateTime, signal1), by='name')
+)
+
+HeadAndTime(
+  DT[DT2, list(name, assetId, dateTime, signal1, signal4)]
+)
+```
+
+In addition to being significantly faster, data.table's implementation is also much cleaner.  In some cases, data.table provides functionality that cannot be replicated in dplyr.
+
+#### Rolling joins
+
+When your dates don't match up, you can have data.table join based on closest date.  This also works on any data that R understands as numeric.
+
+We first generate a data set where the dates do not overlap with `DT`:
+
+```{r}
+oldDateTimes <- seq.POSIXt(from=as.POSIXct('2010-01-01 00:00:00'), 
+                           to=as.POSIXct('2012-01-01 00:00:00'), 
+                           length.out=50000)
+
+DT3 <- data.table(assetId=sample(assets, 30000, replace=T), 
+                  dateTime=sample(oldDateTimes, 30000, replace=T), 
+                  signal6=rbeta(30000, 5, 9), 
+                  signal7=rchisq(30000, 6))
+```
+
+##### Rolling join of `DT3` and `DT` keyed by `assetId` and `dateTime`:
+
+```{r}
+setkeyv(DT, c('assetId', 'dateTime'))
+setkeyv(DT3, c('assetId', 'dateTime'))
+
+HeadAndTime(
+  DT3[DT, roll=T]
+)
+```
+
+This is a very useful feature when you want to join data from consecutive events.
+
+### Exercises
+
+1. Use both dplyr and data.table to calculate the mean of `signal1` by `assetId` during the month of January:
+
+```{r}
+# Your code here
+
+
+
+```
+
+2. Use both dplyr and data.table to plot `signal1` vs. `dateTime` of Asset_1 from `DF` and `DT` during the month of January:
+
+```{r}
+# Your code here
+
+
+
+```
+
+Note: For dplyr you may need to use `arrange(desc(.))` to sort `dateTime` properly before plotting.
+
+3. Use data.table to take the product of `signal2` and `signal4` from `DT` and `DT2`, respectively, and create a new column called `joinProd`:
+
+```{r}
+# Your code here
+
+
+
+```
+
+Note: As the new column name suggests, you should perform a left join.
+
+## Summary
+
+There is a lot more that both data.table and dplyr can do.  data.table attempts to merge the functionality of data.frame and dplyr into one cohesive and super fast package.  While data.table's learning curve may seem steep at first, you'll learn that it is quite consistent in they way it is used.  On medium-sized data (< 1M rows), dplyr and data.frame perform quite similarly, but on larger data dplyr struggles to keep up.  Ultimately, it comes down to preference and the needs of your specific project.
+
+## Helpful links
+
+1. [Introduction to the data.table package in R](http://datatable.r-forge.r-project.org/datatable-intro.pdf)
+2. [FAQs about the data.table package in R](https://cran.r-project.org/web/packages/data.table/vignettes/datatable-faq.pdf)
+3. [data.table vs dplyr: can one do something well the other can't or does poorly?](http://stackoverflow.com/questions/21435339/data-table-vs-dplyr-can-one-do-something-well-the-other-cant-or-does-poorly)
+4. [Matt Dowle's "data.table" talk at useR 2014](https://www.youtube.com/watch?v=qLrdYhizEMg)
