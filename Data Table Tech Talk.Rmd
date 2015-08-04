@@ -31,7 +31,7 @@ Note: If you run into issues installing dplyr, it may be because dplyr requires 
 
 ## fread vs. read.csv
 
-If you take away nothing else from this tech talk, at least use data.table's `fread` over `read.csv`.  On a large (20GB, 200 rows x 16 cols) data set, `read.csv` will take hours, while fread takes about 8 minutes.  By default `fread` will read a csv into a data.table, but if the remainder of this talk does not convince you to make the switch, you can also read it in as a data.frame.
+If you take away nothing else from this tech talk, at least use data.table's `fread` over `read.csv`.  On a large (20GB, 200M rows x 16 cols) data set, `read.csv` will take hours, while `fread` takes about 8 minutes.  By default `fread` will read a csv into a data.table, but if the remainder of this talk does not convince you to make the switch, you can also read it in as a data.frame.
 
 ```{r, eval=F}
 dt <- fread('dataset.csv')                  # returns data.table
@@ -159,7 +159,7 @@ Let's first look at the structure of data.table's arguments and then look at som
 
 #### data.table's arguments
 
-data.table's inputs---often denoted as `DT[i, j, k]`---allow the following:
+data.table's inputs---often denoted as `DT[i, j, by]`---allow the following:
 
 * `i` allows you to evaluate conditional arguments (i.e. `signal1 > 0.5`)
 * `j` allows you to select or perform expressions on columns
@@ -437,7 +437,7 @@ Note: As the new column name suggests, you should perform a left join.
 
 ## Summary
 
-There is a lot more that both data.table and dplyr can do.  data.table attempts to merge the functionality of data.frame and dplyr into one cohesive and super fast package.  While data.table's learning curve may seem steep at first, you'll learn that it is quite consistent in they way it is used.  On medium-sized data (< 1M rows), dplyr and data.frame perform quite similarly, but on larger data dplyr struggles to keep up.  Ultimately, it comes down to preference and the needs of your specific project.
+There is a lot more that both data.table and dplyr can do.  data.table attempts to merge the functionality of data.frame and dplyr into one cohesive and super fast package.  While data.table's learning curve may seem steep at first, you'll learn that it is quite consistent in they way it is used.  On medium-sized data (< 1M rows), dplyr and data.table perform quite similarly, but on larger data dplyr struggles to keep up.  Ultimately, it comes down to preference and the needs of your specific project.
 
 ## Helpful links
 

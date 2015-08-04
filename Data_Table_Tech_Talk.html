@@ -98,7 +98,7 @@ img {
 </div>
 <div id="fread-vs.read.csv" class="section level2">
 <h2>fread vs. read.csv</h2>
-<p>If you take away nothing else from this tech talk, at least use data.table’s <code>fread</code> over <code>read.csv</code>. On a large (20GB, 200 rows x 16 cols) data set, <code>read.csv</code> will take hours, while fread takes about 8 minutes. By default <code>fread</code> will read a csv into a data.table, but if the remainder of this talk does not convince you to make the switch, you can also read it in as a data.frame.</p>
+<p>If you take away nothing else from this tech talk, at least use data.table’s <code>fread</code> over <code>read.csv</code>. On a large (20GB, 200M rows x 16 cols) data set, <code>read.csv</code> will take hours, while <code>fread</code> takes about 8 minutes. By default <code>fread</code> will read a csv into a data.table, but if the remainder of this talk does not convince you to make the switch, you can also read it in as a data.frame.</p>
 <pre class="r"><code>dt &lt;- fread('dataset.csv')                  # returns data.table
 df &lt;- fread('dataset.csv', data.table=F)    # returns data.frame</code></pre>
 </div>
@@ -179,7 +179,7 @@ DT &lt;- as.data.table(DF)</code></pre>
 ## 8556   8556 Asset_100 2014-09-13 09:05:34 0.3837638 3.03475422      ON
 ## 11717 11717 Asset_100 2014-12-05 05:31:43 0.5391351 0.06165879      ON</code></pre>
 <pre><code>##    user  system elapsed 
-##   2.134   0.111   2.246</code></pre>
+##   2.050   0.099   2.152</code></pre>
 <pre class="r"><code>HeadAndTime(
   DT[assetId == 'Asset_100' &amp; signal3 == 'ON', ]
 )</code></pre>
@@ -191,7 +191,7 @@ DT &lt;- as.data.table(DF)</code></pre>
 ## 5:  8556 Asset_100 2014-09-13 09:05:34 0.3837638 3.03475422      ON
 ## 6: 11717 Asset_100 2014-12-05 05:31:43 0.5391351 0.06165879      ON</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.687   0.013   0.701</code></pre>
+##   0.666   0.012   0.679</code></pre>
 <p>Notice that within our data.table, we don’t have to say <code>DT$assetId == 'Asset_100' &amp; DT$signal3 == 'ON'</code>. This is because within data.table’s square brackets, we can reference column names directly as variables.</p>
 <p>While in the above code data.table is faster than data.frame, it is still not the best way to subset a data.table. Another method involves setting a key for the data.table and then subsetting.</p>
 <pre class="r"><code>setkey(DT, assetId, signal3)  # set key to use binary search instead of vector scan
@@ -208,7 +208,7 @@ HeadAndTime(
 ## 5:  8556 Asset_100 2014-09-13 09:05:34 0.3837638 3.03475422      ON
 ## 6: 11717 Asset_100 2014-12-05 05:31:43 0.5391351 0.06165879      ON</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.004   0.000   0.004</code></pre>
+##   0.003   0.000   0.003</code></pre>
 <p>While setting up the key initially can take some time, all of the later subsetting is much faster. This is because data.table rearranges itself to allow binary search instead of vector scan. This means that instead of checking every row for these conditions, data.table can immediately eliminate many rows. For comparison, the computational complexity of vector scan is <span class="math">\(\mathcal{O}(n)\)</span>, while binary search is <span class="math">\(\mathcal{O}(\log{}n)\)</span>. Additionally, data.table performs computations by reference instead of making a copy and performing calculations on these. This can be much more memory efficient, but can also lead to undesired results (see <a href="https://en.wikipedia.org/wiki/Referential_transparency_(computer_science)">Referential Transparency</a>).</p>
 </div>
 </div>
@@ -250,7 +250,7 @@ HeadAndTime(
 <p>Let’s first look at the structure of data.table’s arguments and then look at some examples of where this structure is incredibly useful.</p>
 <div id="data.tables-arguments" class="section level4">
 <h4>data.table’s arguments</h4>
-<p>data.table’s inputs—often denoted as <code>DT[i, j, k]</code>—allow the following:</p>
+<p>data.table’s inputs—often denoted as <code>DT[i, j, by]</code>—allow the following:</p>
 <ul>
 <li><code>i</code> allows you to evaluate conditional arguments (i.e. <code>signal1 &gt; 0.5</code>)</li>
 <li><code>j</code> allows you to select or perform expressions on columns</li>
@@ -343,7 +343,7 @@ HeadAndTime(
 ## 5  Asset_101     4942.751
 ## 6  Asset_102     5028.185</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.685   0.055   0.756</code></pre>
+##   0.714   0.042   0.761</code></pre>
 <pre class="r"><code>HeadAndTime(
   DT[, sum(signal1), by=assetId]
 )</code></pre>
@@ -355,7 +355,7 @@ HeadAndTime(
 ## 5:  Asset_101 4942.751
 ## 6:  Asset_102 5028.185</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.118   0.010   0.129</code></pre>
+##   0.108   0.007   0.114</code></pre>
 <p>There are a few things to note about dplyr’s implementation. The pipe operator, <code>%&gt;%</code>, works in the same way <code>|</code> works in Unix—it allows you to pass the result of one calculation as the first argument of the next function (see <code>?&quot;%&gt;%&quot;</code>). Using the pipe operator seems to be a common convention when working with dplyr. Additionally, we see two new functions, <code>group_by</code> and <code>summarize</code>, which allow you to group and then perform calculations, respectively.</p>
 </div>
 <div id="compute-sum-of-signal2-by-assetid-when-signal1-0.5" class="section level5">
@@ -373,7 +373,7 @@ HeadAndTime(
 ## 5  Asset_101     4951.634
 ## 6  Asset_102     4958.209</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.764   0.040   0.806</code></pre>
+##   0.785   0.038   0.825</code></pre>
 <pre class="r"><code>HeadAndTime(
   DT[signal1 &gt; 0.5, sum(signal2), by=assetId]
 )</code></pre>
@@ -385,7 +385,7 @@ HeadAndTime(
 ## 5:  Asset_101 4951.634
 ## 6:  Asset_102 4958.209</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.212   0.019   0.232</code></pre>
+##   0.257   0.020   0.279</code></pre>
 <p>Here we have added a new function called <code>filter</code>, which performs subsetting of the data.frame.</p>
 </div>
 <div id="take-difference-of-signal2-and-signal1-and-assign-to-sigdif" class="section level5">
@@ -401,7 +401,7 @@ HeadAndTime(
 ## 5    5 Asset_431 2014-10-06 02:19:34 0.25558412 0.3531577      ON  0.09757356
 ## 6    6 Asset_693 2014-02-23 22:45:14 0.24515170 0.1918058      ON -0.05334586</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.049   0.015   0.065</code></pre>
+##   0.053   0.017   0.071</code></pre>
 <pre class="r"><code>HeadAndTime(
   DT[, sigDif := signal2 - signal1]
 )</code></pre>
@@ -413,7 +413,7 @@ HeadAndTime(
 ## 5: 6832 Asset_1 2014-12-01 08:08:43 0.6619537 0.2571891844     OFF -0.4047645
 ## 6: 6982 Asset_1 2014-05-23 13:29:52 0.7530080 0.0008710201     OFF -0.7521370</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.115   0.070   0.193</code></pre>
+##   0.119   0.071   0.199</code></pre>
 <p>Here we use the function <code>mutate</code>, which can create a new column. The naming of dplyr’s functions are pretty straightforward and easy to interpret at first glance. However, dplyr’s statements can be more verbose and sometimes inconsistent to form.</p>
 </div>
 <div id="take-difference-of-signal2-and-signal1-when-signal3-equals-on-and-assign-to-sigdif1" class="section level5">
@@ -429,7 +429,7 @@ HeadAndTime(
 ## 5    5 Asset_431 2014-10-06 02:19:34 0.25558412 0.3531577      ON  0.09757356  0.09757356
 ## 6    6 Asset_693 2014-02-23 22:45:14 0.24515170 0.1918058      ON -0.05334586 -0.05334586</code></pre>
 <pre><code>##    user  system elapsed 
-##   3.555   0.271   3.830</code></pre>
+##   3.565   0.256   3.827</code></pre>
 <pre class="r"><code>HeadAndTime(
   DT[signal3 == 'ON', sigDif1 := signal2 - signal1]
 )</code></pre>
@@ -441,7 +441,7 @@ HeadAndTime(
 ## 5: 6832 Asset_1 2014-12-01 08:08:43 0.6619537 0.2571891844     OFF -0.4047645      NA
 ## 6: 6982 Asset_1 2014-05-23 13:29:52 0.7530080 0.0008710201     OFF -0.7521370      NA</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.233   0.047   0.282</code></pre>
+##   0.312   0.066   0.385</code></pre>
 <p>You might think that we would use <code>filter</code> for the dplyr operation, but instead we have to handle checking that <code>signal3</code> is ‘ON’ within the <code>mutate</code> function. In data.table, the syntax stays consistent—it always follows the <code>DT[i, j, by]</code> structure.</p>
 </div>
 </div>
@@ -463,7 +463,7 @@ HeadAndTime(
 ## 5  Asset_101 4942.751  9894.354
 ## 6  Asset_102 5028.185 10003.073</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.719   0.019   0.737</code></pre>
+##   0.742   0.022   0.765</code></pre>
 <pre class="r"><code>HeadAndTime(
   DT[, lapply(list(signal1, signal2), sum), by=assetId]
 )</code></pre>
@@ -475,7 +475,7 @@ HeadAndTime(
 ## 5:  Asset_101 4942.751  9894.354
 ## 6:  Asset_102 5028.185 10003.073</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.082   0.000   0.083</code></pre>
+##   0.087   0.000   0.087</code></pre>
 </div>
 <div id="sum-across-signal1-and-signal2-by-assetid-and-assign-to-new-columns-signal1sum-and-signal2sum-respectively" class="section level5">
 <h5>Sum across <code>signal1</code> and <code>signal2</code> by <code>assetId</code> and assign to new columns <code>signal1Sum</code> and <code>signal2Sum</code>, respectively:</h5>
@@ -494,7 +494,7 @@ HeadAndTime(
 ## 6    6 Asset_693 2014-02-23 22:45:14 0.24515170 0.1918058      ON -0.05334586 -0.05334586
 ## Variables not shown: signal1Sum (dbl), signal2Sum (dbl)</code></pre>
 <pre><code>##    user  system elapsed 
-##   1.032   0.056   1.089</code></pre>
+##   1.036   0.049   1.087</code></pre>
 <pre class="r"><code>HeadAndTime(
   DT[, c('signal1Sum', 'signal2Sum') := lapply(list(signal1, signal2), sum), by=assetId]
 )</code></pre>
@@ -513,7 +513,7 @@ HeadAndTime(
 ## 5:   10076.03
 ## 6:   10076.03</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.178   0.034   0.219</code></pre>
+##   0.158   0.031   0.199</code></pre>
 <p>Notice that dplyr has a set of <code>*_each</code> functions, which easily allow you to apply the function across multiple columns. data.table on the other hand uses the <code>lapply</code> function within the <code>j</code> argument. I think that dplyr’s implementation is a little cleaner, but this is something that data.table is working on.</p>
 </div>
 </div>
@@ -545,7 +545,7 @@ DT2 &lt;- as.data.table(DF2)</code></pre>
 ## 5  1.69675627   5082.071  10033.053
 ## 6  0.94473874   4953.979   9968.128</code></pre>
 <pre><code>##    user  system elapsed 
-##  17.455   1.093  19.458</code></pre>
+##  18.130   1.124  19.606</code></pre>
 <pre class="r"><code>setkey(DT, 'name')
 setkey(DT2, 'name')
 
@@ -567,7 +567,7 @@ HeadAndTime(
 ## 5:   4966.712   9977.748      13 4.577211
 ## 6:   5022.183  10117.803       8 3.512609</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.690   0.071   0.760</code></pre>
+##   0.771   0.090   0.868</code></pre>
 <p>Continuing with its easy to understand syntax, dplyr introduces a function called <code>left_join</code> to perform a left join. data.table allows you to pass in the new data.table directly. Joining is a case where data.table’s implementation is significantly faster and easier to implement in most cases.</p>
 </div>
 <div id="left-join-df2-and-df-by-name-and-select-name-assetid-datetime-signal1-and-signal4" class="section level5">
@@ -583,7 +583,7 @@ HeadAndTime(
 ## 5 7027026       6  Asset_95 2014-08-10 18:37:52 0.005115463
 ## 6 7162993      11 Asset_397 2014-04-21 04:17:42 0.046490218</code></pre>
 <pre><code>##    user  system elapsed 
-##  16.234   0.908  17.161</code></pre>
+##  15.805   0.860  16.695</code></pre>
 <pre class="r"><code>HeadAndTime(
   DT[DT2, list(name, assetId, dateTime, signal1, signal4)]
 )</code></pre>
@@ -595,7 +595,7 @@ HeadAndTime(
 ## 5:    5 Asset_431 2014-10-06 02:19:34 0.25558412      13
 ## 6:    6 Asset_693 2014-02-23 22:45:14 0.24515170       8</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.542   0.118   0.659</code></pre>
+##   0.533   0.104   0.637</code></pre>
 <p>In addition to being significantly faster, data.table’s implementation is also much cleaner. In some cases, data.table provides functionality that cannot be replicated in dplyr.</p>
 </div>
 <div id="rolling-joins" class="section level4">
@@ -633,7 +633,7 @@ HeadAndTime(
 ## 5:         NA   5074.684   10076.03
 ## 6:         NA   5074.684   10076.03</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.781   0.185   0.966</code></pre>
+##   0.775   0.173   0.948</code></pre>
 <p>This is a very useful feature when you want to join data from consecutive events.</p>
 </div>
 </div>
@@ -658,7 +658,7 @@ HeadAndTime(
 </div>
 <div id="summary" class="section level2">
 <h2>Summary</h2>
-<p>There is a lot more that both data.table and dplyr can do. data.table attempts to merge the functionality of data.frame and dplyr into one cohesive and super fast package. While data.table’s learning curve may seem steep at first, you’ll learn that it is quite consistent in they way it is used. On medium-sized data (&lt; 1M rows), dplyr and data.frame perform quite similarly, but on larger data dplyr struggles to keep up. Ultimately, it comes down to preference and the needs of your specific project.</p>
+<p>There is a lot more that both data.table and dplyr can do. data.table attempts to merge the functionality of data.frame and dplyr into one cohesive and super fast package. While data.table’s learning curve may seem steep at first, you’ll learn that it is quite consistent in they way it is used. On medium-sized data (&lt; 1M rows), dplyr and data.table perform quite similarly, but on larger data dplyr struggles to keep up. Ultimately, it comes down to preference and the needs of your specific project.</p>
 </div>
 <div id="helpful-links" class="section level2">
 <h2>Helpful links</h2>
